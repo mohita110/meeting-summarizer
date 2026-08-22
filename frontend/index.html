@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Meeting Summarizer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>🎙️ Meeting Summarizer</h1>
+    <p class="subtitle">Upload a meeting recording to get a transcript, summary, and action items.</p>
+
+    <div class="upload-box" id="dropZone">
+      <input type="file" id="fileInput" accept=".mp3,.wav,.m4a,.mp4,.webm,.ogg,.flac" hidden />
+      <button id="chooseBtn">Choose Audio File</button>
+      <p id="fileName">No file selected</p>
+      <button id="uploadBtn" disabled>Upload & Process</button>
+    </div>
+
+    <div id="status"></div>
+
+    <div id="result" class="hidden">
+      <h2>Summary</h2>
+      <p id="summaryText"></p>
+
+      <h2>Key Decisions</h2>
+      <ul id="decisionsList"></ul>
+
+      <h2>Action Items</h2>
+      <table id="actionTable">
+        <thead>
+          <tr><th>Task</th><th>Owner</th><th>Due Date</th></tr>
+        </thead>
+        <tbody id="actionBody"></tbody>
+      </table>
+
+      <details>
+        <summary>View Full Transcript</summary>
+        <pre id="transcriptText"></pre>
+      </details>
+    </div>
+
+    <hr />
+    <h2>Past Meetings</h2>
+    <ul id="historyList"></ul>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

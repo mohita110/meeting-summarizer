@@ -1,0 +1,14 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+python-dotenv==1.0.1
+sqlalchemy==2.0.35
+requests==2.32.3
+anthropic==0.34.2
+openai==1.51.0
+pydantic==2.9.2
+
+# Optional: local Whisper transcription (no external API needed).
+# Uncomment if you want local/offline ASR instead of a cloud API.
+# openai-whisper==20231117
+# ffmpeg-python==0.2.0
