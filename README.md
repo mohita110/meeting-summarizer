@@ -1,13 +1,29 @@
 # Meeting Summarizer
 
-Transcribe meeting audio and generate action-oriented summaries: transcript + summary + key decisions + action items, with a simple web frontend to upload audio and view results.
+An AI-powered tool that turns raw meeting audio into a clean, actionable summary. Upload a recording and get back a full transcript, a plain-English summary, the key decisions made, and a structured action items list — each with an owner and due date where mentioned.
+
+Built for teams who don't have time to re-listen to a 45-minute call just to find out what they agreed to.
+
+## What it does
+
+1. **You upload an audio recording** of a meeting through a simple web page.
+2. **The audio is transcribed** into text using a speech-to-text (ASR) model.
+3. **The transcript is passed to an LLM**, which extracts a summary, the key decisions made, and a list of action items with owners and deadlines.
+4. **Everything is saved and displayed** in the browser, and you can revisit any past meeting from a history list.
 
 ## Features
 - 🎧 Upload meeting audio (`.mp3`, `.wav`, `.m4a`, `.mp4`, `.webm`, `.ogg`, `.flac`)
-- 📝 Automatic transcription (OpenAI Whisper API, local Whisper, or Azure Speech)
-- 🤖 LLM-generated summary, key decisions, and action items (Claude or GPT)
+- 📝 Automatic transcription via Whisper (through Groq's free API, OpenAI's API, or fully offline)
+- 🤖 LLM-generated summary, key decisions, and action items (Groq, Claude, or GPT — your choice)
 - 💾 Persistent storage of past meetings (SQLite)
-- 🌐 Minimal frontend to upload audio and browse results
+- 🌐 Simple web frontend to upload audio and browse results — no separate setup needed
+- 🔌 Pluggable architecture — swap ASR or LLM providers by changing one environment variable
+
+## Tech Stack
+- **Backend:** Python, FastAPI, SQLAlchemy (SQLite)
+- **Transcription:** Whisper (via Groq, OpenAI, or a local model)
+- **Summarization:** LLM APIs (Groq / Anthropic Claude / OpenAI GPT)
+- **Frontend:** Plain HTML, CSS, and JavaScript (no build step required)
 
 ## Project Structure
 ```
@@ -28,25 +44,23 @@ meeting-summarizer/
 
 ## 1. Prerequisites
 - Python 3.10+
-- An API key for at least one ASR provider and one LLM provider:
-  - **ASR**: OpenAI (for Whisper API) or Azure Speech, *or* no key at all if using local Whisper
-  - **LLM**: Anthropic (Claude) or OpenAI
+- An API key for transcription and summarization. The easiest free option is [Groq](https://console.groq.com) (no credit card needed) — it covers both. Alternatives: OpenAI, Anthropic (Claude), or Azure Speech.
 
 ## 2. Setup
 
 ```bash
 cd meeting-summarizer/backend
 python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+source venv/bin/activate        # Windows (PowerShell): venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-Copy the example environment file and fill in your keys:
+Copy the example environment file and fill in your key:
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env`:
+Edit `.env` — the simplest setup (recommended, free) uses Groq for both steps:
 ```
 ASR_PROVIDER=openai_whisper_api      # or local_whisper / azure
 LLM_PROVIDER=anthropic               # or openai
@@ -55,8 +69,9 @@ OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
+
 > **Using local Whisper instead of a cloud API?**
-> Uncomment `openai-whisper` and `ffmpeg-python` in `requirements.txt`, install ffmpeg on your system (`brew install ffmpeg` / `apt install ffmpeg`), then set `ASR_PROVIDER=local_whisper` in `.env`. No OpenAI key needed for transcription in that case.
+> Uncomment `openai-whisper` and `ffmpeg-python` in `requirements.txt`, install ffmpeg on your system (`brew install ffmpeg` / `apt install ffmpeg`), then set `ASR_PROVIDER=local_whisper` in `.env`. No API key needed for transcription in that case.
 
 ## 3. Run the app
 
@@ -103,14 +118,14 @@ The ASR and LLM integrations are isolated in `asr.py` and `summarizer.py` behind
 - **Database**: SQLite is fine for a demo/small team; swap `DATABASE_URL` in `.env` for a Postgres URL (e.g. `postgresql://user:pass@host/db`) for production — SQLAlchemy handles the rest.
 - **Frontend**: since FastAPI serves it as static files by default, no separate deployment step is needed. For a standalone deploy, any static host (Netlify, Vercel, S3) works — just set `API_BASE` in `script.js`.
 
-## 8. Recording a demo video
-A simple flow to capture for your demo/deliverable:
-1. Show the upload UI and select a short sample meeting recording.
-2. Show the processing state, then the resulting transcript, summary, decisions, and action items.
-3. Show the "Past Meetings" list persisting across a page reload.
-4. Briefly show `asr.py` / `summarizer.py` to demonstrate the pluggable provider design.
+## 8. Project Structure & Design Notes
 
-## Notes on Evaluation Focus (per project spec)
-- **Transcription accuracy**: depends on chosen ASR provider/model size — use `medium`/`large` local Whisper models or the hosted API for best accuracy.
-- **Summary quality / prompt effectiveness**: prompt lives in `summarizer.py::SYSTEM_PROMPT` — tune it there.
-- **Code structure**: ASR, summarization, storage, and API layers are fully decoupled for easy testing/swapping.
+The codebase is intentionally split into clean, single-responsibility layers:
+
+- **`asr.py`** — handles all speech-to-text logic. Each provider (Groq, OpenAI, local Whisper, Azure) is a separate function, selected at runtime by the `ASR_PROVIDER` variable.
+- **`summarizer.py`** — handles all LLM summarization logic, same pattern as above via `LLM_PROVIDER`. The prompt that instructs the LLM how to summarize lives in `SYSTEM_PROMPT` at the top of this file and can be tuned without touching any other code.
+- **`database.py`** — defines the SQLite schema and session handling for storing meeting records.
+- **`app.py`** — the FastAPI layer that ties everything together and exposes the HTTP API.
+- **`frontend/`** — a dependency-free HTML/CSS/JS page that talks to the API and is served automatically by the backend.
+
+This separation means adding a new transcription or summarization provider (e.g. Deepgram, Gemini) only requires adding one function and one line to a dispatcher — no changes anywhere else.
