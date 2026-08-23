@@ -108,6 +108,7 @@ def _summarize_groq(transcript: str) -> str:
     client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
     response = client.chat.completions.create(
         model="openai/gpt-oss-120b",
+        temperature=0,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": f"Transcript:\n\n{transcript}"},
