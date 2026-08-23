@@ -1,35 +1,86 @@
 """
 ASR (Automatic Speech Recognition) integration.
 
-Supports three interchangeable providers, selected via the ASR_PROVIDER
+Supports four interchangeable providers, selected via the ASR_PROVIDER
 env var:
   - openai_whisper_api : Whisper via OpenAI's hosted API (simplest, no GPU needed)
+  - groq                : Whisper via Groq's free, OpenAI-compatible API
   - local_whisper       : Whisper running locally (offline, needs openai-whisper installed)
   - azure               : Azure Cognitive Services Speech-to-Text
 
 Swap providers without touching any other part of the app.
+
+All audio is preprocessed (noise reduction + normalization + resampling)
+before transcription to improve accuracy, especially on noisy recordings.
 """
 import os
+import subprocess
+import tempfile
+
+WHISPER_CONTEXT_PROMPT = (
+    "This is a business meeting recording. It may include multiple speakers, "
+    "names, dates, project names, and technical terms. Transcribe accurately, "
+    "including proper nouns and numbers."
+)
 
 
 class TranscriptionError(Exception):
     pass
 
 
-def transcribe(file_path: str) -> str:
-    """Dispatch to the configured ASR provider and return plain transcript text."""
-    provider = os.getenv("ASR_PROVIDER", "openai_whisper_api")
+def _preprocess_audio(file_path: str) -> str:
+    """
+    Reduce background noise, normalize volume, and standardize the audio
+    format (16kHz mono) before sending it to any ASR provider. This alone
+    typically improves transcription accuracy more than any other change.
 
-    if provider == "openai_whisper_api":
-        return _transcribe_openai_whisper_api(file_path)
-    elif provider == "groq":
-        return _transcribe_groq(file_path)
-    elif provider == "local_whisper":
-        return _transcribe_local_whisper(file_path)
-    elif provider == "azure":
-        return _transcribe_azure(file_path)
-    else:
-        raise TranscriptionError(f"Unknown ASR_PROVIDER: {provider}")
+    Falls back silently to the original file if ffmpeg isn't installed,
+    so the app still works without it.
+    """
+    fd, out_path = tempfile.mkstemp(suffix="_processed.wav")
+    os.close(fd)
+
+    # highpass: removes low-frequency rumble (AC hum, desk vibration)
+    # afftdn: adaptive FFT-based noise reduction (removes steady background hiss/fan noise)
+    # loudnorm: normalizes volume so quiet speakers are as audible as loud ones
+    audio_filters = "highpass=f=100,afftdn=nf=-25,loudnorm=I=-16:TP=-1.5:LRA=11"
+
+    cmd = [
+        "ffmpeg", "-y", "-i", file_path,
+        "-af", audio_filters,
+        "-ar", "16000",  # Whisper is trained on 16kHz audio
+        "-ac", "1",       # mono
+        out_path,
+    ]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, timeout=180)
+        return out_path
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        # ffmpeg not installed, or preprocessing failed — use the original file instead
+        if os.path.exists(out_path):
+            os.remove(out_path)
+        return file_path
+
+
+def transcribe(file_path: str) -> str:
+    """Preprocess audio, dispatch to the configured ASR provider, and clean up."""
+    provider = os.getenv("ASR_PROVIDER", "openai_whisper_api")
+    processed_path = _preprocess_audio(file_path)
+
+    try:
+        if provider == "openai_whisper_api":
+            return _transcribe_openai_whisper_api(processed_path)
+        elif provider == "groq":
+            return _transcribe_groq(processed_path)
+        elif provider == "local_whisper":
+            return _transcribe_local_whisper(processed_path)
+        elif provider == "azure":
+            return _transcribe_azure(processed_path)
+        else:
+            raise TranscriptionError(f"Unknown ASR_PROVIDER: {provider}")
+    finally:
+        if processed_path != file_path and os.path.exists(processed_path):
+            os.remove(processed_path)
 
 
 def _transcribe_openai_whisper_api(file_path: str) -> str:
@@ -45,6 +96,7 @@ def _transcribe_openai_whisper_api(file_path: str) -> str:
         result = client.audio.transcriptions.create(
             model="whisper-1",
             file=audio_file,
+            prompt=WHISPER_CONTEXT_PROMPT,
         )
     return result.text
 
@@ -65,6 +117,7 @@ def _transcribe_groq(file_path: str) -> str:
         result = client.audio.transcriptions.create(
             model="whisper-large-v3",
             file=audio_file,
+            prompt=WHISPER_CONTEXT_PROMPT,
         )
     return result.text
 
